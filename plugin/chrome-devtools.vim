@@ -33,6 +33,7 @@ import json
 import urllib2
 
 class BrolinkLink(threading.Thread):
+	n = 0
 
 	def __init__ (self, ws):
 		threading.Thread.__init__(self)
@@ -43,6 +44,7 @@ class BrolinkLink(threading.Thread):
 			for b in vim.buffers:
 				if b.name == "chrome:\\\\console":
 					b.append(message)
+			ws.send("{ \"id\": 6, \"method\": \"Console.clearMessages\" }")
 		def on_close(ws):
 			if (can_close == 0):
 				ws.run_forever()
@@ -62,19 +64,37 @@ can_close = 0
 
 #ws = websocket.WebSocketApp("ws://127.0.0.1:9001/")
 
+cachedTabData = ""
+
 def disconnect():
 	can_close = 1
 	ws.close()
 
-def start_chromedevtools(guid):
-	print guid
+def chromedevtools_tablist():
+	global cachedTabData
+	buf = 0
+	for b in vim.buffers:
+		if b.name == "chrome:\\\\tablist":
+			buf = b
 	content = urllib2.urlopen("http://localhost:9222/json").read()
 	data = json.loads(content)
 	for page in data:
-		print page["url"]
+		buf.append(page["title"] + " : " + page["url"])
+	
+	cachedTabData = content
 	#ws = websocket.WebSocketApp("ws://localhost:9222/devtools/page/" + guid)
 	#thread = BrolinkLink(ws)
 	#thread.start()
+
+def chromedevtools_choosetab(linestr):
+	global cachedTabData
+	print linestr
+
+	data = json.loads(cachedTabData)
+
+	for page in data:
+		if page["title"] + " : " + page["url"] == linestr:
+			print "Found GUID=" + page["id"]
 
 NOMAS
 
@@ -93,7 +113,8 @@ function! s:Connect()
 	endif
 endfunction
 
-command!        -nargs=0 ChromeDevStart             call s:Start(<f-args>)
+command!        -nargs=0 ChromeDevStart             call s:Start()
+command! ChromeDevChooseTab             call s:ChooseTab()
 
 if !exists("g:bl_no_mappings")
     vmap <silent><Leader>be :BLEvaluateSelection<CR>
@@ -103,13 +124,18 @@ if !exists("g:bl_no_mappings")
     nmap <silent><Leader>bc :BLReloadCSS<CR>
 endif
 
-function! s:Start(guid)
+function! s:Start()
 	" Make a hidden buffer for chrome
-	silent hide edit chrome://console
+	silent hide edit chrome://tablist
 	set buftype=nofile
+	nnoremap <buffer> <cr> :ChromeDevChooseTab<cr>
 	silent execute "normal \<C-^>" 
 
-	python start_chromedevtools(vim.eval("a:guid"))
+	python chromedevtools_tablist()
+endfunction
+
+function! s:ChooseTab()
+	python chromedevtools_choosetab(vim.eval("getline('.')"))
 endfunction
 
 au VimLeave * :ChromeDevDisconnectAll
