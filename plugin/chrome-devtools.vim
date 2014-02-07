@@ -42,23 +42,19 @@ class ChromeDevThread(threading.Thread):
 		def on_message(ws, message):
 			data = json.loads(message)
 			if data["method"] == "Console.messageAdded":
-				#string = data["params"]["message"]["text"]
-				#line = data["params"]["message"]["line"]
-				#time = data["params"]["message"]["timestamp"]
-				#url = data["params"]["message"]["url"]
+				string = data["params"]["message"]["text"]
+				line = data["params"]["message"]["line"]
+				time = data["params"]["message"]["timestamp"]
+				url = data["params"]["message"]["url"]
 
-				messagestr = ": " + string + " (" + url + ":" + line + ")"
-				#print messagestr
+				messagestr = str(time) + ": " + string + " (" + url + "):" + str(line)
 
 				for b in vim.buffers:
-					#print b.name
 					if b.name == "chrome:\\\\console\\"+self.guid:
-						b.append(message)
+						b.append(messagestr)
 				ws.send("{ \"id\": 6, \"method\": \"Console.clearMessages\" }")
 		def on_close(ws):
-			print "clonne"
-			if (can_close == 0):
-				ws.run_forever()
+			ws.run_forever()
 		def on_open(ws):
 			print "conne"
 			ws.send("{ \"id\": 5, \"method\": \"Console.enable\" }")
@@ -67,7 +63,7 @@ class ChromeDevThread(threading.Thread):
 			ws.run_forever()
 
 		self.ws.on_message = on_message
-		#ws.on_close = on_close
+		ws.on_close = on_close
 		self.ws.on_open = on_open
 		#ws.on_error = on_error
 		self.ws.run_forever()
