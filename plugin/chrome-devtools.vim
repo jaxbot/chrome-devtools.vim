@@ -32,33 +32,45 @@ import websocket
 import json
 import urllib2
 
-class BrolinkLink(threading.Thread):
-	n = 0
-
-	def __init__ (self, ws):
+class ChromeDevThread(threading.Thread):
+	def __init__ (self, ws, guid):
 		threading.Thread.__init__(self)
 		self.ws = ws
+		self.guid = guid
 	
 	def run(self):
 		def on_message(ws, message):
-			for b in vim.buffers:
-				if b.name == "chrome:\\\\console":
-					b.append(message)
-			ws.send("{ \"id\": 6, \"method\": \"Console.clearMessages\" }")
+			data = json.loads(message)
+			if data["method"] == "Console.messageAdded":
+				#string = data["params"]["message"]["text"]
+				#line = data["params"]["message"]["line"]
+				#time = data["params"]["message"]["timestamp"]
+				#url = data["params"]["message"]["url"]
+
+				messagestr = ": " + string + " (" + url + ":" + line + ")"
+				#print messagestr
+
+				for b in vim.buffers:
+					#print b.name
+					if b.name == "chrome:\\\\console\\"+self.guid:
+						b.append(message)
+				ws.send("{ \"id\": 6, \"method\": \"Console.clearMessages\" }")
 		def on_close(ws):
+			print "clonne"
 			if (can_close == 0):
 				ws.run_forever()
 		def on_open(ws):
+			print "conne"
 			ws.send("{ \"id\": 5, \"method\": \"Console.enable\" }")
 		def on_error(ws):
 			vim.command("echo 'bl err'")
 			ws.run_forever()
 
-		ws.on_message = on_message
-		ws.on_close = on_close
-		ws.on_open = on_open
-		ws.on_error = on_error
-		ws.run_forever()
+		self.ws.on_message = on_message
+		#ws.on_close = on_close
+		self.ws.on_open = on_open
+		#ws.on_error = on_error
+		self.ws.run_forever()
 
 can_close = 0
 
@@ -82,8 +94,8 @@ def chromedevtools_tablist():
 		buf.append(page["title"] + " : " + page["url"])
 	
 	cachedTabData = content
-	#ws = websocket.WebSocketApp("ws://localhost:9222/devtools/page/" + guid)
-	#thread = BrolinkLink(ws)
+	#ws = websocket.WebSocketApp("ws://localhost:9222/devtools/page/3C2ECC59-D3E7-44C9-9569-A5DAA89DB130")
+	#thread = ChromeDevThread(ws)
 	#thread.start()
 
 def chromedevtools_choosetab(linestr):
@@ -95,6 +107,16 @@ def chromedevtools_choosetab(linestr):
 	for page in data:
 		if page["title"] + " : " + page["url"] == linestr:
 			print "Found GUID=" + page["id"]
+			url = page["webSocketDebuggerUrl"]
+			guid = page["id"]
+			break
+	
+	print url
+	lws = websocket.WebSocketApp(url)
+	lthread = ChromeDevThread(lws,page["id"])
+	lthread.start()
+
+	vim.eval("s:MakeConsoleBuffer('" + page["id"] + "')")
 
 NOMAS
 
@@ -129,13 +151,18 @@ function! s:Start()
 	silent hide edit chrome://tablist
 	set buftype=nofile
 	nnoremap <buffer> <cr> :ChromeDevChooseTab<cr>
-	silent execute "normal \<C-^>" 
 
 	python chromedevtools_tablist()
 endfunction
 
 function! s:ChooseTab()
 	python chromedevtools_choosetab(vim.eval("getline('.')"))
+endfunction
+
+function! s:MakeConsoleBuffer(id)
+	silent hide execute 'edit' "chrome://console/" . a:id
+	set buftype=nofile
+	"silent execute "normal \<C-^>" 
 endfunction
 
 au VimLeave * :ChromeDevDisconnectAll
