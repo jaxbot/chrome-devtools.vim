@@ -63,8 +63,9 @@ class ChromeDevThread(threading.Thread):
 					if b.name == "chrome:\\\\console\\"+self.guid:
 						b.append(messagestr)
 		def on_close(ws):
-			if can_close == 1:
-				ws.run_forever()
+			global can_close
+			if can_close == 0:
+				self.ws.run_forever()
 		def on_open(ws):
 			ws.send("{ \"id\": 5, \"method\": \"Console.enable\" }")
 			# not implemented yet
@@ -74,13 +75,22 @@ class ChromeDevThread(threading.Thread):
 		self.ws.on_close = on_close
 		self.ws.on_open = on_open
 		self.ws.run_forever()
+	def close(self):
+		self.ws.close()
 
+open_threads = []
 can_close = 0
 
 cachedTabData = ""
 
 def disconnect():
+	global can_close, open_threads
 	can_close = 1
+	for socket in open_threads:
+		try:
+			socket.close()
+		except:
+			pass
 
 def chromedevtools_tablist():
 	global cachedTabData
@@ -96,7 +106,7 @@ def chromedevtools_tablist():
 	cachedTabData = content
 
 def chromedevtools_choosetab(linestr):
-	global cachedTabData
+	global cachedTabData, open_threads
 
 	data = json.loads(cachedTabData)
 
@@ -109,6 +119,7 @@ def chromedevtools_choosetab(linestr):
 	lws = websocket.WebSocketApp(url)
 	lthread = ChromeDevThread(lws,page["id"])
 	lthread.start()
+	open_threads.append(lthread)
 
 	vim.eval("s:MakeConsoleBuffer('" + page["id"] + "')")
 
